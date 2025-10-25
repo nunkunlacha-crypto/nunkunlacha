@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ค้นหาหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <style>
+        /* CSS สำหรับจัดรูปแบบ */
+        body { font-family: Tahoma, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 40px auto; padding: 30px; background-color: #fff; border-radius: 8px; box-shadow: 0 0 15px rgba(0, 0, 0, 0.2); }
+        h1 { color: #880e4f; text-align: center; border-bottom: 2px solid #c2185b; padding-bottom: 10px; }
+        
+        /* Drop Area - แสดงเฉพาะผู้ดูแลระบบ */
+        #drop-area-container { margin-bottom: 20px; }
+        #drop-area { border: 2px dashed #c2185b; border-radius: 10px; padding: 30px; text-align: center; cursor: pointer; background-color: #fce4ec; }
+        #drop-area.highlight { background-color: #f8bbd0; border-color: #880e4f; }
+        
+        /* Input and Button */
+        .input-group { display: flex; gap: 10px; margin-top: 20px; }
+        input[type="text"] { flex-grow: 1; padding: 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; }
+        button { padding: 12px 20px; background-color: #880e4f; color: white; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.3s; }
+        button:hover { background-color: #5d0737; }
+
+        /* Results and Status */
+        #status-message { margin-top: 15px; padding: 10px; border-radius: 4px; text-align: center; font-weight: bold; }
+        .status-success { background-color: #e8f5e9; color: #388e3c; }
+        .status-error { background-color: #ffcdd2; color: #d32f2f; }
+        .tawi50-form { border: 3px solid #880e4f; padding: 25px; margin-top: 25px; border-radius: 6px; background-color: #ffffff; }
+        .tawi50-form h3 { text-align: center; color: #880e4f; margin-top: 0; border-bottom: 1px solid #c2185b; padding-bottom: 10px; }
+        .tawi50-form table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        .tawi50-form th, .tawi50-form td { border: 1px solid #ddd; padding: 8px; text-align: left; font-size: 14px; word-wrap: break-word; }
+        .tawi50-form th { background-color: #f8e5ed; color: #880e4f; width: 35%; }
+        .tawi50-form tr:nth-child(even) { background-color: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ค้นหาหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ)</h1>
+        
+        <div id="drop-area-container">
+            <div id="drop-area">
+                <p>1. **ผู้ดูแลระบบ (คุณ):** ลากไฟล์ **.xlsx** หรือ **.csv** ที่มีข้อมูลมาวางที่นี่
+                <label for="fileInput" style="color: #880e4f; text-decoration: underline; cursor: pointer;">หรือคลิกเพื่อเลือกไฟล์</label></p>
+                <input type="file" id="fileInput" accept=".xlsx, .xlsm, .csv" style="display: none;" onchange="handleFiles(this.files)">
+                <p style="font-size: 12px; color: #555;">(ไฟล์จะถูกประมวลผลแบบส่วนตัวบนเครื่องของผู้ใช้ และไม่ถูกส่งออกไปที่อื่น)</p>
+                <p style="font-size: 14px; color: #d32f2f; font-weight: bold;">**สำคัญ:** กรุณาใช้ไฟล์ .xlsx หรือ .csv ธรรมดาเท่านั้น ห้ามใช้ไฟล์ .xlsm</p>
+            </div>
+        </div>
+
+        <div id="status-message"></div>
+
+        <div class="input-group">
+            <input type="text" id="taxIdInput" placeholder="2. กรอก เลขประจำตัวผู้เสียภาษีอากร (13 หลัก) ของท่าน" maxlength="13">
+            <button onclick="searchTawi50()">ค้นหาข้อมูล</button>
+        </div>
+
+        <div id="resultOutput">
+            </div>
+    </div>
+
+    <script>
+        let tawi50Data = []; 
+        let taxIdKeyName = 'เลขประจำตัวผู้เสียภาษีอากร'; 
+        
+        // --- Handlers (เหมือนเดิม) ---
+        const dropAreaContainer = document.getElementById('drop-area-container');
+        const dropArea = document.getElementById('drop-area');
+        const statusMessage = document.getElementById('status-message');
+        const resultOutput = document.getElementById('resultOutput');
+        
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.add('highlight'), false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropArea.addEventListener(eventName, () => dropArea.classList.remove('highlight'), false);
+        });
+        dropArea.addEventListener('drop', handleDrop, false);
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function handleDrop(e) {
+            let dt = e.dataTransfer;
+            let files = dt.files;
+            handleFiles(files);
+        }
+        // ------------------------------------------------
+
+        // ** ฟังก์ชันหลักในการอ่านและประมวลผลไฟล์ Excel/CSV **
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            const reader = new FileReader();
+            
+            statusMessage.className = 'status-success';
+            statusMessage.innerHTML = `กำลังอ่านไฟล์: ${file.name}... กรุณารอสักครู่`;
+            resultOutput.innerHTML = '';
+            tawi50Data = []; // ล้างข้อมูลเดิม
+
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    // ใช้ type: 'array' ในการอ่านไฟล์ Excel/CSV
+                    const workbook = XLSX.read(data, { type: 'array' }); 
+                    
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    
+                    // ใช้ raw: true, defval: "", dateNF เพื่อความเสถียรสูงสุด
+                    const sheetAOA = XLSX.utils.sheet_to_json(worksheet, {
+                        header: 1, 
+                        raw: true, // อ่านค่าดิบเพื่อป้องกันการตัดทอนตัวเลข (สำคัญสำหรับ 5660 -> 5)
+                        defval: "", 
+                        dateNF: 'yyyy-mm-dd' 
+                    }); 
+                    
+                    if (sheetAOA.length < 6) { 
+                        statusMessage.className = 'status-error';
+                        statusMessage.innerHTML = '❌ โครงสร้างข้อมูลไม่ถูกต้อง (ต้องมีข้อมูลอย่างน้อย 6 แถว)';
+                        return;
+                    }
+                    
+                    // Header Row 5 (Index 4)
+                    const headerRow = sheetAOA[4]; 
+                    // Data Rows เริ่มตั้งแต่แถวที่ 6 (Index 5) เป็นต้นไป
+                    const dataRows = sheetAOA.slice(5);
+                    
+                    // คอลัมน์ที่ต้องการดึง: B ถึง O (Index 1 ถึง 14)
+                    const COL_START_IDX = 1; // B
+                    const COL_END_IDX = 14;  // O
+                    
+                    let taxIdColIndex = -1;
+                    
+                    // Mapping ชื่อคอลัมน์และ Index (ใช้เฉพาะคอลัมน์ B ถึง O)
+                    const colMap = {};
+                    for (let i = COL_START_IDX; i <= COL_END_IDX; i++) {
+                        // ใช้ String(headerRow[i]) เพื่อป้องกัน Header เป็นตัวเลข
+                        const keyName = headerRow[i] ? String(headerRow[i]).trim() : `Col${i}`; 
+                        if (keyName) {
+                            colMap[keyName] = i;
+
+                            if (keyName.includes('เลขประจำตัวผู้เสียภาษีอากร')) {
+                                taxIdColIndex = i;
+                                taxIdKeyName = keyName; 
+                            }
+                        }
+                    }
+
+                    if (taxIdColIndex === -1) {
+                        statusMessage.className = 'status-error';
+                        statusMessage.innerHTML = '❌ ไม่พบชื่อคอลัมน์ "เลขประจำตัวผู้เสียภาษีอากร" ในแถวที่ 5 (คอลัมน์ B-O)';
+                        return;
+                    }
+                    
+                    // ** ประมวลผลและจัดเก็บทุกแถวข้อมูลที่ถูกต้อง **
+                    tawi50Data = dataRows.map(dataRow => {
+                        let rowObject = {};
+                        let hasData = false;
+                        
+                        for(const keyName in colMap) {
+                            const colIndex = colMap[keyName];
+                            // เก็บข้อมูลเฉพาะคอลัมน์ B-O
+                            const value = dataRow[colIndex] || '';
+                            rowObject[keyName] = value;
+                            
+                            if (String(value).trim() !== '') {
+                                hasData = true;
+                            }
+                        }
+                        return hasData ? rowObject : null;
+                    }).filter(item => {
+                        // กรองแถวว่างเปล่าและกรองเฉพาะแถวที่มีเลขประจำตัว 13 หลัก
+                        if (!item) return false;
+                        const taxId = item[taxIdKeyName]; 
+                        return taxId && String(taxId).trim().replace(/[^0-9]/g, '').length === 13;
+                    });
+                    
+                    if (tawi50Data.length > 0) {
+                        statusMessage.className = 'status-success';
+                        statusMessage.innerHTML = `✅ ประมวลผลไฟล์สำเร็จแล้ว! พบ ${tawi50Data.length} รายการ **ตอนนี้คุณสามารถแชร์ลิงก์นี้ให้ติวเตอร์ใช้ได้เลย**`;
+                        // ซ่อน Drop Area หลังประมวลผลสำเร็จเพื่อให้ติวเตอร์ไม่เห็น
+                        dropAreaContainer.style.display = 'none';
+                    } else {
+                        statusMessage.className = 'status-error';
+                        statusMessage.innerHTML = '❌ ประมวลผลสำเร็จ แต่ไม่พบรายการที่มีเลขประจำตัว 13 หลักในแถวข้อมูล (ตั้งแต่แถวที่ 6 ลงไป)';
+                    }
+                    
+                } catch (error) {
+                    statusMessage.className = 'status-error';
+                    statusMessage.innerHTML = `❌ เกิดข้อผิดพลาดในการอ่านไฟล์: ${error.message}<br>
+                    <small>คำแนะนำ: กรุณาลองบันทึกไฟล์ Excel เป็นรูปแบบ <b>.xlsx</b> หรือ <b>.csv</b> ธรรมดา</small>`;
+                    console.error(error);
+                }
+            };
+
+            reader.onerror = function() {
+                 statusMessage.className = 'status-error';
+                 statusMessage.innerHTML = '❌ เกิดข้อผิดพลาดในการอ่านไฟล์ กรุณาลองใหม่อีกครั้ง';
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        // ** ฟังก์ชันค้นหาข้อมูลด้วยเลขประจำตัวผู้เสียภาษีอากร **
+        function searchTawi50() {
+            const rawInput = document.getElementById('taxIdInput').value.trim();
+            const taxId = rawInput.replace(/[^0-9]/g, ''); // ลบขีดหรืออักขระที่ไม่ใช่ตัวเลข
+            resultOutput.innerHTML = ''; 
+
+            if (tawi50Data.length === 0) {
+                resultOutput.innerHTML = '<p class="status-error">ยังไม่มีข้อมูลในระบบ กรุณาให้ผู้ดูแลระบบอัปโหลดไฟล์ข้อมูลก่อน</p>';
+                return;
+            }
+
+            if (taxId.length !== 13) {
+                resultOutput.innerHTML = '<p class="status-error">กรุณากรอกเลขประจำตัวผู้เสียภาษีอากร **13 หลัก** ให้ถูกต้อง</p>';
+                return;
+            }
+            
+            // ค้นหาแถวที่ตรงกับเลขประจำตัวผู้เสียภาษีอากร
+            const foundData = tawi50Data.find(item => 
+                String(item[taxIdKeyName]).trim().replace(/[^0-9]/g, '') === taxId
+            );
+
+            if (foundData) {
+                let tableHTML = '<h3>ข้อมูลหนังสือรับรองการหักภาษี ณ ที่จ่าย (50 ทวิ) ของท่าน</h3><table><thead><tr><th>รายการ</th><th>รายละเอียด</th></tr></thead><tbody>';
+                
+                // --- กำหนดชื่อคอลัมน์ที่ต้องการจัดรูปแบบ/แก้ไขการลิงก์ ---
+                const dataKeyNames = {
+                    tax_id_key: taxIdKeyName,
+                    paid_amount_key: Object.keys(foundData).find(k => k.includes('จำนวนเงินที่จ่าย')),
+                    payor_address_key: Object.keys(foundData).find(k => k.includes('ที่อยู่ของผู้ที่มีที่มีหน้าที่หักภาษี ณ ที่จ่าย')),
+                    payor_tax_id_key: Object.keys(foundData).find(k => k.includes('เลขประจำตัวผู้เสียภาษี บริษัท เบสท์ติวเตอร์ เอ็ดดูเคชั่น จำกัด')),
+                    tax_year_key: Object.keys(foundData).find(k => k.includes('ปีภาษีที่จ่ายเงินได้')),
+                    tax_withheld_key: Object.keys(foundData).find(k => k.includes('ภาษี่หักและนำส่งไว้')),
+                };
+
+                // --- วนลูปแสดงข้อมูล (B-O) ---
+                for (const key in foundData) {
+                    let value = foundData[key] !== undefined && foundData[key] !== null ? foundData[key] : '';
+
+                    // 1. เลขประจำตัวผู้เสียภาษีอากร (B)
+                    if (key === dataKeyNames.tax_id_key) {
+                        value = String(value).trim().replace(/[^0-9]/g, ''); // ไม่ต้องมีลูกน้ำ/ทศนิยม
+                    
+                    // 2. จำนวนเงินที่จ่าย (E) และ ภาษีที่หักและนำส่งไว้ (F)
+                    } else if (key === dataKeyNames.paid_amount_key || key === dataKeyNames.tax_withheld_key) {
+                        // มีจุดทศนิยมและหน่วยบาท
+                        const numValue = parseFloat(String(value).replace(/,/g, '').trim());
+                        if (!isNaN(numValue)) {
+                            value = numValue.toLocaleString('th-TH', { minimumFractionDigits: 2 }) + ' บาท';
+                        }
+                    
+                    // 4. เลขประจำตัวผู้เสียภาษี บริษัท (L)
+                    } else if (key === dataKeyNames.payor_tax_id_key) {
+                        value = String(value).trim().replace(/[^0-9]/g, ''); // ไม่ต้องมีลูกน้ำ/ทศนิยม
+
+                    // 3. ที่อยู่ (K), 5. ปีภาษี (M) และคอลัมน์อื่นๆ ที่เป็นข้อความ
+                    } else {
+                        value = String(value).trim();
+                    }
+                    
+                    if (value === '') value = '-';
+
+                    tableHTML += `<tr><th>${key}</th><td>${value}</td></tr>`;
+                }
+
+                tableHTML += '</tbody></table>';
+                resultOutput.innerHTML = `<div class="tawi50-form">${tableHTML}</div>`;
+            } else {
+                resultOutput.innerHTML = '<p class="status-error">🔎 ไม่พบข้อมูลใบทวิ 50 สำหรับเลขประจำตัวผู้เสียภาษีอากรนี้ในระบบ</p>';
+            }
+        }
+    </script>
+</body>
+</html>
